@@ -1,5 +1,8 @@
 from keras.layers import Input, Dense, Conv1D, MaxPooling1D, UpSampling1D, Flatten, Reshape, BatchNormalization
 from keras.models import Model
+from keras.layers import Dropout
+from keras.optimizers import SGD
+from keras.constraints import maxnorm
 from keras import backend as K
 from keras.utils import plot_model
 from keras.callbacks import TensorBoard
@@ -17,7 +20,9 @@ from os import path
 
 import numpy as np
 
-labels = ['a_n', 'a_l','a_h', 'a_lhl','i_n', 'i_l','i_h', 'i_lhl', 'u_n', 'u_l','u_h', 'u_lhl',]
+#labels = ['a_n', 'a_l','a_h', 'a_lhl','i_n', 'i_l','i_h', 'i_lhl', 'u_n', 'u_l','u_h', 'u_lhl',]
+labels = ['a', 'i', 'u',]
+
 
 """
 AutodecoderRaw will train a 1D convolutional autoencoder with raw audio signals
@@ -78,13 +83,14 @@ else:
             y_vector = np.zeros(len(labels))
             label = str.split(file, '.')[1]
             label = str.split(label, "-")[1]
+            label = str.split(label, "_")[0]
             y_vector[labels.index(label)] = 1
             y_train = np.append(y_train, y_vector)
 
     x_train = np.reshape(x_train, (int(len(x_train)/window_size), window_size, 1))
     y_train = np.reshape(y_train, (int(len(y_train)/len(labels)), len(labels), 1))
-    x_train += 1
-    x_train *= 0.4
+    #x_train += 1
+    #x_train *= 0.4
     min = np.min(x_train)
     max = np.max(x_train)
     print(min, max)
@@ -98,26 +104,35 @@ else:
 input = Input(shape=(window_size, 1))  # adapt this if using `channels_first` image data format
 print("Input shape: ", input.shape)
 
-x = Conv1D(cp["no_of_filter1"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same')(input)
-x = BatchNormalization()(x)
+x = Conv1D(cp["no_of_filter1"], cp["filter_size"], activation=cp["activation"], strides=3, data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(input)
+if cp["batch_norm"]:
+    x = BatchNormalization()(x)
 x = MaxPooling1D(cp["filter_size"], padding='same')(x)
-x = Conv1D(cp["no_of_filter2"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same')(x)
-x = BatchNormalization()(x)
+x = Conv1D(cp["no_of_filter2"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
+x = Dropout(0.2)(x)
+if cp["batch_norm"]:
+    x = BatchNormalization()(x)
 x = MaxPooling1D(cp["filter_size"], padding='same')(x)
-x = Conv1D(cp["no_of_filter3"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same')(x)
-x = BatchNormalization()(x)
+x = Conv1D(cp["no_of_filter3"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
+x = Dropout(0.2)(x)
+if cp["batch_norm"]:
+    x = BatchNormalization()(x)
 x = MaxPooling1D(cp["filter_size"], padding='same')(x)
-x = Conv1D(cp["no_of_filter4"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same')(x)
-x = BatchNormalization()(x)
+x = Conv1D(cp["no_of_filter4"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
+if cp["batch_norm"]:
+    x = BatchNormalization()(x)
 x = MaxPooling1D(cp["filter_size"], padding='same')(x)
-x = Conv1D(cp["no_of_filter5"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same')(x)
-x = BatchNormalization()(x)
+x = Conv1D(cp["no_of_filter5"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
+if cp["batch_norm"]:
+    x = BatchNormalization()(x)
 x = MaxPooling1D(cp["filter_size"], padding='same')(x)
-x = Conv1D(cp["no_of_filter6"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same')(x)
-x = BatchNormalization()(x)
+x = Conv1D(cp["no_of_filter6"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
+if cp["batch_norm"]:
+    x = BatchNormalization()(x)
 x = MaxPooling1D(cp["filter_size"], padding='same')(x)
-x = Conv1D(cp["no_of_filter7"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same')(x)
-x = BatchNormalization()(x)
+x = Conv1D(cp["no_of_filter7"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
+if cp["batch_norm"]:
+    x = BatchNormalization()(x)
 x = MaxPooling1D(cp["filter_size"], padding='same')(x)
 #x = Conv1D(cp["no_of_filter8"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same')(x)
 #x = MaxPooling1D(cp["filter_size"], padding='same')(x)
@@ -130,6 +145,7 @@ autoencoder = Model(input, decoded)
 
 plot_model(autoencoder, show_shapes=True, expand_nested=True, to_file='model.png')
 print("Compiling model")
+sgd = SGD(lr=0.005, momentum=0.8)
 autoencoder.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 print(autoencoder.summary())
 
@@ -139,7 +155,7 @@ print(autoencoder.summary())
 
 print(x_train.shape)
 
-earlystopper = EarlyStopping(monitor='loss', min_delta=0.00001, patience=2, verbose=1)
+earlystopper = EarlyStopping(monitor='loss', min_delta=0.000001, patience=10, verbose=1)
 
 y_train = np.reshape(y_train, (y_train.shape[0], 1, len(labels)))
 
@@ -148,8 +164,8 @@ if cp["train"]:
                 epochs=cp["epochs"],
                 batch_size=cp["batch_size"],
                 verbose=1,
-                validation_split=cp["validation_split"])
-#                callbacks=[earlystopper])
+                validation_split=cp["validation_split"],
+                callbacks=[earlystopper])
 
 # serialize model to JSON
 model_json = autoencoder.to_json()
