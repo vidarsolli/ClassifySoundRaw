@@ -14,7 +14,6 @@ import random
 import numpy as np
 from sklearn.manifold import SpectralEmbedding
 import matplotlib.pyplot as plt
-from sklearn.metrics import classification_report, confusion_matrix
 
 
 
@@ -64,22 +63,17 @@ for file in audio_files:
     print("Extracting features from ", file, "# samples: ", audio_samples.shape, " sr: ", cp["sample_rate"], " dt: ", dt, "# features: ", no_of_examples)
 
     #for i in range(no_of_examples):
-    y_vector = np.zeros(len(labels))
-    label = str.split(file, '.')[1]
-    label = str.split(label, "-")[1]
-    label = str.split(label, "_")[0]
-    y_vector[labels.index(label)] = 1
     for i in range(no_of_examples):
         y = audio_samples[(i*step_size):(i*step_size+window_size)]
         x_train = np.append(x_train, y)
-        label = str.split(file, '.')[1]
+        #label = str.split(file, '.')[1]
+        #label = str.split(label, "-")[1]
+        label = str.split(file, "_")[0]
         label = str.split(label, "-")[1]
-        label = str.split(label, "_")[0]
         #y_train = np.append(y_train, labels.index(label))
-        y_train = np.append(y_train, y_vector)
+        y_train = np.append(y_train, label)
 
 x_train = np.reshape(x_train, (int(len(x_train)/window_size), window_size, 1))
-y_train = np.reshape(y_train, (int(len(y_train) / len(labels)), len(labels), 1))
 #x_train += 1
 #x_train *= 0.4
 
@@ -93,40 +87,37 @@ model = model_from_json(loaded_model_json)
 model.load_weights("model.h5")
 print("Loaded model from disk")
 
+# Read the data set for clustering
+x_cluster = np.array([])
+layer_name = 'max_pooling1d_6'
+intermediate_layer_model = Model(inputs=model.input,
+                                 outputs=model.get_layer(layer_name).output)
 
 # Reading the output of the encoder layer
-y_predict = np.array([])
 print("Reading the encoder output")
-#x_predict = np.reshape(x_predict, (1,800,1))
-# x_predict = x_train[i:i+1][:][:]
-#    intermediate_output = model.predict(x_predict)
-y_predict = model.predict(x_train)
-y_predict = np.reshape(y_predict, (y_train.shape[0],y_train.shape[1]))
-print("Y-predict shape: ", y_predict.shape)
-print("Y-train shape: ", y_train.shape)
-#print("Y-train: ", y_train[i], "  Y-predict: ", y_predict[i])
-# model.predict(x_predict, batch_size=1)
-# layer_value = model.layers[3].output.eval(session= K.get_session())
-# print(type(intermediate_output), intermediate_output.shape)
-#x_cluster = np.append(x_cluster, model.layers[3].output)
+for i in range(x_train.shape[0]):
+    x_predict = x_train[i]
+    x_predict = np.reshape(x_predict, (1,x_train.shape[1],1))
+    # x_predict = x_train[i:i+1][:][:]
+    intermediate_output = intermediate_layer_model.predict(x_predict)
+    x_cluster = np.append(x_cluster, intermediate_output[0,:,0])
+    # model.predict(x_predict, batch_size=1)
+    # layer_value = model.layers[3].output.eval(session= K.get_session())
+    # print(type(intermediate_output), intermediate_output.shape)
+    #x_cluster = np.append(x_cluster, model.layers[3].output)
+print("Clustering and plotting")
+print(x_cluster.shape)
+x_cluster = np.reshape(x_cluster, (x_train.shape[0], intermediate_output.shape[1]))
+print(x_cluster.shape)
+embedding = SpectralEmbedding(n_components=2)
+X_transformed = embedding.fit_transform(x_cluster[:500])
+print(X_transformed.shape)
 
-# Print the confusion matrix
+fig, ax = plt.subplots()
+ax.scatter(X_transformed[:,0], X_transformed[:,1])
 
-#Y_pred = model.predict_generator(validation_generator, num_of_test_samples // batch_size+1)
-#y_pred = np.argmax(Y_pred, axis=1)
-#x = np.where(y_predict[:, 0:y_predict.shape[1]] == np.amax(y_predict[:, 0:y_predict.shape[1]]))
-x = np.zeros(y_predict.shape)
-xc = np.zeros([y_predict.shape[0]])
-y = np.zeros(y_predict.shape)
-yc = np.zeros([y_predict.shape[0]])
-for i in range(y_predict.shape[0]):
-    m = np.amax(y_predict[i, :])
-    x[i,np.where(y_predict[i, :] == m)] = 1
-    xc[i] = np.where(y_predict[i, :] == m)[0]
-    m = np.amax(y_train[i, :])
-    y[i,np.where(y_train[i, :] == m)] = 1
-    yc[i] = np.where(y_train[i, :] == m)[0]
-print('Classification Report')
-print(classification_report(x, y, target_names=labels))
-print('Confusion Matrix')
-print(confusion_matrix(xc, yc))
+for i, txt in enumerate(y_train[0:499]):
+    ax.annotate(y_train[i], (X_transformed[i,0], X_transformed[i,1]))
+#plt.plot(X_transformed[:,0], X_transformed[:,1], 'bo')
+#plt.ylabel('some numbers')
+plt.show()

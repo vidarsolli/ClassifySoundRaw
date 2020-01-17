@@ -16,6 +16,8 @@ import random
 import matplotlib.pyplot as plt
 import os.path
 from os import path
+from sklearn.metrics import classification_report, confusion_matrix
+
 
 
 import numpy as np
@@ -32,6 +34,7 @@ The audiofiles to be used are stored in a folder (folder to be stated in the .js
 Usage:  python3 AutoencoderRaw -i <filenam>.json
 """
 
+filename = time.strftime("_%Y_%m_%d_%H_%M_%S", time.localtime())
 json_file = "./config.json"
 
 # Return a list of audio files
@@ -61,6 +64,7 @@ with open(json_file) as file:
 
 window_size = cp["window_size"]
 step_size = cp["step_size"]
+print("Building training set")
 print("Window_size: ", window_size, "Step_size: ", step_size)
 if path.exists("x_train.npy") and path.exists("y_train.npy"):
     x_train = np.load("x_train.npy")
@@ -77,15 +81,16 @@ else:
         dt = step_size/sample_rate
         print("Extracting features from ", file, "# samples: ", audio_samples.shape, " sr: ", cp["sample_rate"], " dt: ", dt, "# examples: ", no_of_examples)
 
-        for i in range(no_of_examples):
-            y = audio_samples[(i*step_size):(i*step_size+window_size)]
-            x_train = np.append(x_train, y)
-            y_vector = np.zeros(len(labels))
-            label = str.split(file, '.')[1]
-            label = str.split(label, "-")[1]
-            label = str.split(label, "_")[0]
-            y_vector[labels.index(label)] = 1
-            y_train = np.append(y_train, y_vector)
+        y_vector = np.zeros(len(labels))
+        label = str.split(file, '.')[1]
+        label = str.split(label, "-")[1]
+        label = str.split(label, "_")[0]
+        y_vector[labels.index(label)] = 1
+        if no_of_examples >= 0:
+            for i in range(no_of_examples):
+                y = audio_samples[(i*step_size):(i*step_size+window_size)]
+                x_train = np.append(x_train, y)
+                y_train = np.append(y_train, y_vector)
 
     x_train = np.reshape(x_train, (int(len(x_train)/window_size), window_size, 1))
     y_train = np.reshape(y_train, (int(len(y_train)/len(labels)), len(labels), 1))
@@ -94,27 +99,30 @@ else:
     min = np.min(x_train)
     max = np.max(x_train)
     print(min, max)
-    print("X_train shape: ", x_train.shape)
     np.save("x_train", x_train)
-    print("Y_train shape: ", y_train.shape)
     np.save("y_train", y_train)
+    print(y_train)
+print("X_train shape: ", x_train.shape)
+print("Y_train shape: ", y_train.shape)
 
 # Set up the SampleCNN model
 
 input = Input(shape=(window_size, 1))  # adapt this if using `channels_first` image data format
 print("Input shape: ", input.shape)
+no_of_layers = (cp["window_size"]**(1./3.))-1
+print("No of layers: ", no_of_layers)
 
-x = Conv1D(cp["no_of_filter1"], cp["filter_size"], activation=cp["activation"], strides=3, data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(input)
+x = Conv1D(cp["no_of_filter1"], cp["filter_size"], activation=cp["activation"], strides=cp["first_stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(input)
 if cp["batch_norm"]:
     x = BatchNormalization()(x)
 x = MaxPooling1D(cp["filter_size"], padding='same')(x)
 x = Conv1D(cp["no_of_filter2"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
-x = Dropout(0.2)(x)
+#x = Dropout(0.2)(x)
 if cp["batch_norm"]:
     x = BatchNormalization()(x)
 x = MaxPooling1D(cp["filter_size"], padding='same')(x)
 x = Conv1D(cp["no_of_filter3"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
-x = Dropout(0.2)(x)
+#x = Dropout(0.2)(x)
 if cp["batch_norm"]:
     x = BatchNormalization()(x)
 x = MaxPooling1D(cp["filter_size"], padding='same')(x)
@@ -126,18 +134,20 @@ x = Conv1D(cp["no_of_filter5"], cp["filter_size"], activation=cp["activation"], 
 if cp["batch_norm"]:
     x = BatchNormalization()(x)
 x = MaxPooling1D(cp["filter_size"], padding='same')(x)
-x = Conv1D(cp["no_of_filter6"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
-if cp["batch_norm"]:
-    x = BatchNormalization()(x)
-x = MaxPooling1D(cp["filter_size"], padding='same')(x)
-x = Conv1D(cp["no_of_filter7"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
-if cp["batch_norm"]:
-    x = BatchNormalization()(x)
-x = MaxPooling1D(cp["filter_size"], padding='same')(x)
+if no_of_layers >= 6:
+    x = Conv1D(cp["no_of_filter6"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
+    if cp["batch_norm"]:
+        x = BatchNormalization()(x)
+    x = MaxPooling1D(cp["filter_size"], padding='same')(x)
+if no_of_layers >= 7:
+    x = Conv1D(cp["no_of_filter7"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
+    if cp["batch_norm"]:
+        x = BatchNormalization()(x)
+    x = MaxPooling1D(cp["filter_size"], padding='same')(x)
 #x = Conv1D(cp["no_of_filter8"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same')(x)
 #x = MaxPooling1D(cp["filter_size"], padding='same')(x)
 x = Dense(cp["dense1_size"], activation=cp["activation"])(x)
-decoded = Dense(len(labels), activation='softmax') (x)
+decoded = Dense(len(labels), activation=cp["last_activation"]) (x)
 
 print(type(decoded))
 
@@ -145,8 +155,9 @@ autoencoder = Model(input, decoded)
 
 plot_model(autoencoder, show_shapes=True, expand_nested=True, to_file='model.png')
 print("Compiling model")
-sgd = SGD(lr=0.005, momentum=0.8)
-autoencoder.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+sgd = SGD(lr=cp["learning_rate"], momentum=cp["momentum"])
+# Possible loss functions: 'categorical_crossentropy', ‘binary_crossentropy‘, ‘mean_squeard_error‘
+autoencoder.compile(optimizer='adam', loss=cp["loss_function"], metrics=['accuracy'])
 print(autoencoder.summary())
 
 # Start the TensorBoard server by: tensorboard --logdir=/tmp/autoencoder
@@ -155,7 +166,7 @@ print(autoencoder.summary())
 
 print(x_train.shape)
 
-earlystopper = EarlyStopping(monitor='loss', min_delta=0.000001, patience=10, verbose=1)
+earlystopper = EarlyStopping(monitor='val_accuracy', min_delta=0.01, patience=3, verbose=1)
 
 y_train = np.reshape(y_train, (y_train.shape[0], 1, len(labels)))
 
@@ -164,8 +175,8 @@ if cp["train"]:
                 epochs=cp["epochs"],
                 batch_size=cp["batch_size"],
                 verbose=1,
-                validation_split=cp["validation_split"],
-                callbacks=[earlystopper])
+                validation_split=cp["validation_split"])
+#                callbacks=[earlystopper])
 
 # serialize model to JSON
 model_json = autoencoder.to_json()
@@ -177,10 +188,59 @@ print("Saved model to disk")
 
 # Plot the result
 # Plot training & validation loss values
+plt.plot(history.history['accuracy'])
+plt.plot(history.history['val_accuracy'])
 plt.plot(history.history['loss'])
 plt.plot(history.history['val_loss'])
-plt.title('Model loss')
-plt.ylabel('Loss')
+plt.title('Model accuracy and loss')
+plt.ylabel('Accuracy/Loss')
 plt.xlabel('Epoch')
-plt.legend(['Train', 'Test'], loc='upper left')
+plt.legend(['Train accuracy', 'Test accuracy', "Train loss", "Test loss"], loc='upper left')
+plt.savefig("figure", format="png")
 plt.show()
+
+# Print Confusion matrix
+
+# Reading the output of the encoder layer
+y_predict = np.array([])
+print("Reading the encoder output")
+#x_predict = np.reshape(x_predict, (1,800,1))
+# x_predict = x_train[i:i+1][:][:]
+#    intermediate_output = model.predict(x_predict)
+y_predict = autoencoder.predict(x_train)
+print("Y-predict shape: ", y_predict.shape)
+print("Y-train shape: ", y_train.shape)
+y_predict = np.reshape(y_predict, (y_train.shape[0],y_train.shape[2]))
+y_train = np.reshape(y_train, (y_train.shape[0],y_train.shape[2]))
+print("Y-predict shape: ", y_predict.shape)
+print("Y-train shape: ", y_train.shape)
+#print("Y-train: ", y_train[i], "  Y-predict: ", y_predict[i])
+# model.predict(x_predict, batch_size=1)
+# layer_value = model.layers[3].output.eval(session= K.get_session())
+# print(type(intermediate_output), intermediate_output.shape)
+#x_cluster = np.append(x_cluster, model.layers[3].output)
+
+# Print the confusion matrix
+
+#Y_pred = model.predict_generator(validation_generator, num_of_test_samples // batch_size+1)
+#y_pred = np.argmax(Y_pred, axis=1)
+#x = np.where(y_predict[:, 0:y_predict.shape[1]] == np.amax(y_predict[:, 0:y_predict.shape[1]]))
+x = np.zeros(y_predict.shape)
+xc = np.zeros([y_predict.shape[0]])
+y = np.zeros(y_predict.shape)
+yc = np.zeros([y_predict.shape[0]])
+for i in range(y_predict.shape[0]):
+    m = np.amax(y_predict[i, :])
+    x[i,np.where(y_predict[i, :] == m)] = 1
+    xc[i] = np.where(y_predict[i, :] == m)[0]
+    m = np.amax(y_train[i, :])
+    y[i,np.where(y_train[i, :] == m)] = 1
+    yc[i] = np.where(y_train[i, :] == m)[0]
+print(xc.shape, yc.shape)
+print(x.shape, y.shape)
+x = np.reshape(x, (x.shape[0], x.shape[1]))
+y = np.reshape(y, (y.shape[0], y.shape[1]))
+print('Classification Report')
+print(classification_report(x, y, target_names=labels))
+print('Confusion Matrix')
+print(confusion_matrix(xc, yc))
