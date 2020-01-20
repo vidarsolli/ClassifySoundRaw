@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import os.path
 from os import path
 from sklearn.metrics import classification_report, confusion_matrix
+from confusion import plot_confusion_matrix
 
 
 
@@ -34,7 +35,8 @@ The audiofiles to be used are stored in a folder (folder to be stated in the .js
 Usage:  python3 AutoencoderRaw -i <filenam>.json
 """
 
-filename = time.strftime("_%Y_%m_%d_%H_%M_%S", time.localtime())
+file_time = time.strftime("%Y_%m_%d_%H_%M_%S_", time.localtime())
+
 json_file = "./config.json"
 
 # Return a list of audio files
@@ -61,6 +63,8 @@ for o, a in myOpts:
 
 with open(json_file) as file:
     cp = json.load(file)
+with open(file_time+"config"+".json", "w") as file:
+    json.dump(cp, file)
 
 window_size = cp["window_size"]
 step_size = cp["step_size"]
@@ -100,7 +104,9 @@ else:
     max = np.max(x_train)
     print(min, max)
     np.save("x_train", x_train)
+    np.save(file_time+"x_train", x_train)
     np.save("y_train", y_train)
+    np.save(file_time+"y_train", y_train)
     print(y_train)
 print("X_train shape: ", x_train.shape)
 print("Y_train shape: ", y_train.shape)
@@ -109,7 +115,12 @@ print("Y_train shape: ", y_train.shape)
 
 input = Input(shape=(window_size, 1))  # adapt this if using `channels_first` image data format
 print("Input shape: ", input.shape)
-no_of_layers = (cp["window_size"]**(1./3.))-1
+no_of_layers = 0
+rest = cp["window_size"]
+for i in range(10):
+    rest = rest/3
+    if rest == 1.:
+        no_of_layers = i
 print("No of layers: ", no_of_layers)
 
 x = Conv1D(cp["no_of_filter1"], cp["filter_size"], activation=cp["activation"], strides=cp["first_stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(input)
@@ -156,7 +167,7 @@ autoencoder = Model(input, decoded)
 plot_model(autoencoder, show_shapes=True, expand_nested=True, to_file='model.png')
 print("Compiling model")
 sgd = SGD(lr=cp["learning_rate"], momentum=cp["momentum"])
-# Possible loss functions: 'categorical_crossentropy', ‘binary_crossentropy‘, ‘mean_squeard_error‘
+# Possible loss functions: 'categorical_crossentropy', ‘binary_crossentropy‘, ‘mean_squared_error‘
 autoencoder.compile(optimizer='adam', loss=cp["loss_function"], metrics=['accuracy'])
 print(autoencoder.summary())
 
@@ -166,7 +177,7 @@ print(autoencoder.summary())
 
 print(x_train.shape)
 
-earlystopper = EarlyStopping(monitor='val_accuracy', min_delta=0.01, patience=3, verbose=1)
+earlystopper = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, verbose=1)
 
 y_train = np.reshape(y_train, (y_train.shape[0], 1, len(labels)))
 
@@ -175,15 +186,18 @@ if cp["train"]:
                 epochs=cp["epochs"],
                 batch_size=cp["batch_size"],
                 verbose=1,
-                validation_split=cp["validation_split"])
-#                callbacks=[earlystopper])
+                validation_split=cp["validation_split"],
+                callbacks=[earlystopper])
 
 # serialize model to JSON
 model_json = autoencoder.to_json()
 with open("model.json", "w") as json_file:
     json_file.write(model_json)
+with open(file_time+"model.json", "w") as json_file:
+    json_file.write(model_json)
 # serialize weights to HDF5
 autoencoder.save_weights("model.h5")
+autoencoder.save_weights(file_time+"model.h5")
 print("Saved model to disk")
 
 # Plot the result
@@ -197,13 +211,12 @@ plt.ylabel('Accuracy/Loss')
 plt.xlabel('Epoch')
 plt.legend(['Train accuracy', 'Test accuracy', "Train loss", "Test loss"], loc='upper left')
 plt.savefig("figure", format="png")
+plt.savefig(file_time+"figure", format="png")
 plt.show()
 
 # Print Confusion matrix
-
-# Reading the output of the encoder layer
 y_predict = np.array([])
-print("Reading the encoder output")
+print("Generating confusion matrix")
 #x_predict = np.reshape(x_predict, (1,800,1))
 # x_predict = x_train[i:i+1][:][:]
 #    intermediate_output = model.predict(x_predict)
@@ -243,4 +256,7 @@ y = np.reshape(y, (y.shape[0], y.shape[1]))
 print('Classification Report')
 print(classification_report(x, y, target_names=labels))
 print('Confusion Matrix')
-print(confusion_matrix(xc, yc))
+cm = confusion_matrix(xc, yc)
+print(cm)
+
+plot_confusion_matrix(cm, classes = labels, title = 'Confusion Matrix', filename = file_time+"confusion_matrix")

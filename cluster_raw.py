@@ -66,10 +66,11 @@ for file in audio_files:
     for i in range(no_of_examples):
         y = audio_samples[(i*step_size):(i*step_size+window_size)]
         x_train = np.append(x_train, y)
-        #label = str.split(file, '.')[1]
+        label = str.split(file, '.')[1]
+        label = str.split(label, '.')[0]
         #label = str.split(label, "-")[1]
-        label = str.split(file, "_")[0]
-        label = str.split(label, "-")[1]
+        label = str.split(label, "_")[1]
+        #label = str.split(label, "-")[1]
         #y_train = np.append(y_train, labels.index(label))
         y_train = np.append(y_train, label)
 
