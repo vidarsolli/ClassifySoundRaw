@@ -137,14 +137,16 @@ x = Conv1D(cp["no_of_filter3"], cp["filter_size"], activation=cp["activation"], 
 if cp["batch_norm"]:
     x = BatchNormalization()(x)
 x = MaxPooling1D(cp["filter_size"], padding='same')(x)
-x = Conv1D(cp["no_of_filter4"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
-if cp["batch_norm"]:
-    x = BatchNormalization()(x)
-x = MaxPooling1D(cp["filter_size"], padding='same')(x)
-x = Conv1D(cp["no_of_filter5"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
-if cp["batch_norm"]:
-    x = BatchNormalization()(x)
-x = MaxPooling1D(cp["filter_size"], padding='same')(x)
+if no_of_layers >= 4:
+    x = Conv1D(cp["no_of_filter4"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
+    if cp["batch_norm"]:
+        x = BatchNormalization()(x)
+    x = MaxPooling1D(cp["filter_size"], padding='same')(x)
+if no_of_layers >= 5:
+    x = Conv1D(cp["no_of_filter5"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
+    if cp["batch_norm"]:
+        x = BatchNormalization()(x)
+    x = MaxPooling1D(cp["filter_size"], padding='same')(x)
 if no_of_layers >= 6:
     x = Conv1D(cp["no_of_filter6"], cp["filter_size"], activation=cp["activation"], strides=cp["stride"], data_format='channels_last', padding='same', kernel_constraint=maxnorm(3))(x)
     if cp["batch_norm"]:
@@ -177,7 +179,7 @@ print(autoencoder.summary())
 
 print(x_train.shape)
 
-earlystopper = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, verbose=1)
+earlystopper = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=10, verbose=1)
 
 y_train = np.reshape(y_train, (y_train.shape[0], 1, len(labels)))
 
@@ -210,8 +212,8 @@ plt.title('Model accuracy and loss')
 plt.ylabel('Accuracy/Loss')
 plt.xlabel('Epoch')
 plt.legend(['Train accuracy', 'Test accuracy', "Train loss", "Test loss"], loc='upper left')
-plt.savefig("figure", format="png")
-plt.savefig(file_time+"figure", format="png")
+plt.savefig("figure.png", format="png")
+plt.savefig(file_time+"figure.png", format="png")
 plt.show()
 
 # Print Confusion matrix
@@ -259,4 +261,4 @@ print('Confusion Matrix')
 cm = confusion_matrix(xc, yc)
 print(cm)
 
-plot_confusion_matrix(cm, classes = labels, title = 'Confusion Matrix', filename = file_time+"confusion_matrix")
+plot_confusion_matrix(cm, classes = labels, title = 'Confusion Matrix', filename = file_time+"confusion_matrix.png")

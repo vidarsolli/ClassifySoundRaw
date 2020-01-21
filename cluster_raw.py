@@ -90,9 +90,8 @@ print("Loaded model from disk")
 
 # Read the data set for clustering
 x_cluster = np.array([])
-layer_name = 'max_pooling1d_6'
 intermediate_layer_model = Model(inputs=model.input,
-                                 outputs=model.get_layer(layer_name).output)
+                                 outputs=model.get_layer(cp["layer_name"]).output)
 
 # Reading the output of the encoder layer
 print("Reading the encoder output")
@@ -121,4 +120,6 @@ for i, txt in enumerate(y_train[0:499]):
     ax.annotate(y_train[i], (X_transformed[i,0], X_transformed[i,1]))
 #plt.plot(X_transformed[:,0], X_transformed[:,1], 'bo')
 #plt.ylabel('some numbers')
+plt.title(cp["layer:name"])
+plt.savefig("results/"+cp["layer_name"]+".png", format="png")
 plt.show()
