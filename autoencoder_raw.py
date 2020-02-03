@@ -3,43 +3,62 @@ from __future__ import division
 from __future__ import print_function
 import keras
 from keras.layers import Activation, Dense, Input
-from keras.layers import Conv2D, Flatten
+from keras.layers import Conv2D, Flatten, MaxPooling2D
 from keras.layers import Reshape, Conv2DTranspose
 from keras.models import Model
 from keras import backend as K
+from keras.optimizers import SGD
+
 from keras.datasets import mnist
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
+import json
+import sys, getopt
+from os import path
+import time
 
 np.random.seed(1337)
 
-# MNIST dataset
-(x_train, _), (x_test, _) = mnist.load_data()
+# Read the configuration parameters from a .json file
+json_file = "config.json"
+try:
+    myOpts, args = getopt.getopt(sys.argv[1:], "i:")
+except getopt.GetoptError as e:
+    print(str(e))
+    print("Usage: %s -i <json_file>" % sys.argv[0])
+    sys.exit(2)
 
-image_size = x_train.shape[1]
-x_train = np.reshape(x_train, [-1, image_size, image_size, 1])
-x_test = np.reshape(x_test, [-1, image_size, image_size, 1])
-x_train = x_train.astype('float32') / 255
-x_test = x_test.astype('float32') / 255
+for o, a in myOpts:
+    if o == '-i':
+        json_file = a
 
-# Generate corrupted MNIST images by adding noise with normal dist
-# centered at 0.5 and std=0.5
-noise = np.random.normal(loc=0.5, scale=0.5, size=x_train.shape)
-x_train_noisy = x_train + noise
-noise = np.random.normal(loc=0.5, scale=0.5, size=x_test.shape)
-x_test_noisy = x_test + noise
+with open(json_file) as file:
+    cp = json.load(file)
 
-x_train_noisy = np.clip(x_train_noisy, 0., 1.)
-x_test_noisy = np.clip(x_test_noisy, 0., 1.)
+if path.exists("x_train.npy") and path.exists("y_train.npy"):
+    x_train = np.load("x_train.npy")
+    y_train = np.load("y_train.npy")
+else:
+    print("No training file exists")
+    exit()
 
+x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], x_train.shape[2], 1))
+max = np.max(x_train)
+min = np.min(x_train)
+x_train = x_train - min
+x_train = x_train / max
+
+print(x_train.shape)
 # Network parameters
-input_shape = (image_size, image_size, 1)
-batch_size = 128
+input_shape = (cp["window_size"], 1, 1)
+batch_size = cp["batch_size"]
 kernel_size = 3
 latent_dim = 16
 # Encoder/Decoder number of CNN layers and filters per layer
-layer_filters = [32, 64]
+layer_filters = [cp["no_of_filter1"], cp["no_of_filter2"], cp["no_of_filter3"], cp["no_of_filter4"],
+                 cp["no_of_filter5"], cp["no_of_filter6"], cp["no_of_filter7"], cp["no_of_filter8"]]
+
 
 # Build the Autoencoder Model
 # First build the Encoder Model
@@ -50,12 +69,32 @@ x = inputs
 # 1) Use Batch Normalization before ReLU on deep networks
 # 2) Use MaxPooling2D as alternative to strides>1
 # - faster but not as good as strides>1
-for filters in layer_filters:
-    x = Conv2D(filters=filters,
-               kernel_size=kernel_size,
-               strides=2,
-               activation='relu',
-               padding='same')(x)
+no_of_layers = 0
+rest = cp["window_size"]
+for i in range(10):
+    rest = rest/3
+    if rest == 1.:
+        no_of_layers = i
+print("No of layers: ", no_of_layers)
+
+x = Conv2D(cp["no_of_filter1"], cp["filter_size"], activation=cp["activation"], strides=(cp["first_stride"], 1), data_format='channels_last', padding='same')(inputs)
+x = MaxPooling2D(cp["filter_size"], padding='same')(x)
+x = Conv2D(cp["no_of_filter2"], cp["filter_size"], activation=cp["activation"], strides=(cp["stride"], 1), data_format='channels_last', padding='same')(x)
+x = MaxPooling2D(cp["filter_size"], padding='same')(x)
+x = Conv2D(cp["no_of_filter3"], cp["filter_size"], activation=cp["activation"], strides=(cp["stride"], 1), data_format='channels_last', padding='same')(x)
+x = MaxPooling2D(cp["filter_size"], padding='same')(x)
+if no_of_layers >= 4:
+    x = Conv2D(cp["no_of_filter4"], cp["filter_size"], activation=cp["activation"], strides=(cp["stride"], 1), data_format='channels_last', padding='same')(x)
+    x = MaxPooling2D(cp["filter_size"], padding='same')(x)
+if no_of_layers >= 5:
+    x = Conv2D(cp["no_of_filter5"], cp["filter_size"], activation=cp["activation"], strides=(cp["stride"], 1), data_format='channels_last', padding='same')(x)
+    x = MaxPooling2D(cp["filter_size"], padding='same')(x)
+if no_of_layers >= 6:
+    x = Conv2D(cp["no_of_filter6"], cp["filter_size"], activation=cp["activation"], strides=(cp["stride"], 1), data_format='channels_last', padding='same')(x)
+    x = MaxPooling2D(cp["filter_size"], padding='same')(x)
+if no_of_layers >= 7:
+    x = Conv2D(cp["no_of_filter7"], cp["filter_size"], activation=cp["activation"], strides=(cp["stride"], 1), data_format='channels_last', padding='same')(x)
+    x = MaxPooling2D(cp["filter_size"], padding='same')(x)
 
 # Shape info needed to build Decoder Model
 shape = K.int_shape(x)
@@ -81,7 +120,7 @@ x = Reshape((shape[1], shape[2], shape[3]))(x)
 for filters in layer_filters[::-1]:
     x = Conv2DTranspose(filters=filters,
                         kernel_size=kernel_size,
-                        strides=2,
+                        strides=(3,1),
                         activation='relu',
                         padding='same')(x)
 
@@ -89,7 +128,7 @@ x = Conv2DTranspose(filters=1,
                     kernel_size=kernel_size,
                     padding='same')(x)
 
-outputs = Activation('sigmoid', name='decoder_output')(x)
+outputs = Activation(cp["last_activation"], name='decoder_output')(x)
 
 # Instantiate Decoder Model
 decoder = Model(latent_inputs, outputs, name='decoder')
@@ -100,32 +139,30 @@ decoder.summary()
 autoencoder = Model(inputs, decoder(encoder(inputs)), name='autoencoder')
 autoencoder.summary()
 
-autoencoder.compile(loss='mse', optimizer='adam')
+sgd = SGD(lr=0.1, momentum=0.8)
 
+autoencoder.compile(optimizer='adam', loss=cp["loss_function"], metrics=['accuracy'])
 # Train the autoencoder
-autoencoder.fit(x_train_noisy,
+history = autoencoder.fit(x_train,
                 x_train,
-                validation_data=(x_test_noisy, x_test),
-                epochs=30,
-                batch_size=batch_size)
+                #validation_data=(x_test_noisy, x_test),
+                epochs=10,
+                validation_split = 0.2,
+                batch_size=cp["batch_size"])
 
 # Predict the Autoencoder output from corrupted test images
-x_decoded = autoencoder.predict(x_test_noisy)
+x_decoded = autoencoder.predict(x_train)
 
-# Display the 1st 8 corrupted and denoised images
-rows, cols = 10, 30
-num = rows * cols
-imgs = np.concatenate([x_test[:num], x_test_noisy[:num], x_decoded[:num]])
-imgs = imgs.reshape((rows * 3, cols, image_size, image_size))
-imgs = np.vstack(np.split(imgs, rows, axis=1))
-imgs = imgs.reshape((rows * 3, -1, image_size, image_size))
-imgs = np.vstack([np.hstack(i) for i in imgs])
-imgs = (imgs * 255).astype(np.uint8)
-plt.figure()
-plt.axis('off')
-plt.title('Original images: top rows, '
-          'Corrupted Input: middle rows, '
-          'Denoised Input:  third rows')
-plt.imshow(imgs, interpolation='none', cmap='gray')
-Image.fromarray(imgs).save('corrupted_and_denoised.png')
+# Plot the result
+file_time = time.strftime("%Y_%m_%d_%H_%M_%S_", time.localtime())
+# Plot training & validation loss values
+plt.plot(history.history['accuracy'])
+plt.plot(history.history['val_accuracy'])
+plt.plot(history.history['loss'])
+plt.plot(history.history['val_loss'])
+plt.title('Autoencoder accuracy and loss')
+plt.ylabel('Accuracy/Loss')
+plt.xlabel('Epoch')
+plt.legend(['Train accuracy', 'Test accuracy', "Train loss", "Test loss"], loc='upper left')
+plt.savefig(file_time+"autoencoder.png", format="png")
 plt.show()
